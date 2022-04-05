@@ -61,7 +61,7 @@ set.seed(1234)
 **Import Data**
 ```{r}
 # setwd(choose.dir()) if you want to set your working directory 
-Data_eng <- read.csv("D:/ALDA 2021/CRYSTAL System-Data Science project/Crystal-DS Project 3/TEC-DS -Week materials/Week 4/Projekt ne R model/Data_eng.csv")
+Data_eng <- read.csv("D:/ALDA 2022/Data_eng.csv")
 View(Data_eng)
 ```
 **Time Series** \
