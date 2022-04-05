@@ -1,0 +1,438 @@
+---
+title: "Labs-Time Series"
+subtitle: "Predict the Supply of a product"
+author: "Eralda Gjika"
+date: "April 05, 2022"
+output: html_notebook
+---
+
+This function will help us coloring some text in tabs or Rmd.
+```{r}
+colorize <- function(x, color) {
+  if (knitr::is_latex_output()) {
+    sprintf("\\textcolor{%s}{%s}", color, x)
+  } else if (knitr::is_html_output()) {
+    sprintf("<span style='color: %s;'>%s</span>", color,
+      x)
+  } else x
+}
+```
+
+## Final report {.tabset}
+### Introduction
+Here you may put some introduction to your project. Explain the source of your data and what you intend to do.
+
+**A list of libraries used in material:**
+```{r}
+library(tidytext)
+library(dplyr)
+library(tidyr)
+library(h2o)
+library(tidyverse)
+library(jsonlite)
+library(widyr)
+library(igraph)
+library(ggraph)
+library(stringr)
+library(tm)
+library(fpp3)
+library(xgboost)
+library(vip)
+library(randomForest)
+library(Metrics)
+library(forecast)
+library(ggplot2)
+library(tsbox)
+library(quantmod)
+library(corrplot)
+library(PerformanceAnalytics)
+library(FinTS)
+library(MTS)
+library(tibble)
+library(gridExtra)
+library(TSstudio)
+set.seed(1234)
+```
+
+
+### `r colorize("Data processing","blue")`
+`r colorize("Processing","red")`
+
+**Import Data**
+```{r}
+# setwd(choose.dir()) if you want to set your working directory 
+Data_eng <- read.csv("D:/ALDA 2021/CRYSTAL System-Data Science project/Crystal-DS Project 3/TEC-DS -Week materials/Week 4/Projekt ne R model/Data_eng.csv")
+View(Data_eng)
+```
+**Time Series** \
+ 
+*Create a time series object* \
+*Using ts()*
+```{r}
+head(Data_eng)
+demand<- ts(Data_eng$demand,start = c(2016,1),frequency = 12)
+supply<-ts(Data_eng$supply,start = c(2016,1),frequency = 12)
+price.prod1<- ts(Data_eng$price_prod_1,start(2016,1),frequency = 12)
+nr_consumers<- ts(Data_eng$no_of_consumer,start = c(2016,1),frequency = 12)
+price.prod2<- ts(Data_eng$price_prod_2,start = c(2016,1),frequency = 12)
+exchange.rate<-ts(Data_eng$exchange_rate,start = c(2016,1),frequency = 12)
+```
+
+*Visualize time series*
+
+```{r}
+ts.plot(supply, main="Supply of the product", xlab="Year", ylab="value",col=3)
+```
+
+*The graph shows:* \
+*put a text here explaining your graph* \
+
+Create a seasonal plot
+```{r}
+seasonplot(supply, ylab = "value", xlab = "Month",main = "Supply ",year.labels = TRUE, year.labels.left = TRUE, col = 2:6, pch=19)
+
+seasonplot(price.prod1, ylab = "value", xlab = "Month",main = "Price 1 ",year.labels = TRUE, year.labels.left = TRUE, col = 2:6, pch=19)
+
+seasonplot(price.prod2, ylab = "value", xlab = "Month",main = "Price 2 ",year.labels = TRUE, year.labels.left = TRUE, col = 2:6, pch=19)
+
+
+```
+
+*here we observe a seasonal pattern and we may notice the maximum and minimum values* \
+
+*monthplot function will help us to identify the behaviour for each month *
+```{r}
+monthplot(supply, ylab = "value", xlab = "Month", xaxt="n",main="Supply", col=2)
+axis(1, at = 1:12, labels = month.abb, cex=0.8)
+```
+
+**Correlations**
+```{r}
+par(mfrow=c(1,2))
+supply %>%
+  acf(lag.max = 300,
+       main = "Supply")
+supply %>%
+  pacf(lag.max = 300,
+       main = "Supply")
+```
+*Explain here the ACF* \
+
+
+*Use of library(TSstudio) and the function ts_lags which may help to idetify observations and correlations at lag's*
+
+```{r}
+ts_lags(supply,lags = c(2, 15, 40, 50, 80, 90))
+```
+
+```{r}
+# Reference: http://rstudio-pubs-static.s3.amazonaws.com/2107_4eb1adc1e4d44b93b6fde7eb801519fe.html 
+
+cor.mat=cor(Data_eng[,c(2,3,4,5,6,7)])# correlation matrix 
+corrplot(cor.mat, method="circle")
+
+corrplot.mixed(cor.mat)
+corrplot(cor.mat, order = "hclust")
+cor.mat["supply","exchange_rate"]# if we want oi observe the correlation value
+```
+*interpret the results of correlation plots*
+
+### `r colorize("Data Analysis","green")`
+`r colorize("Analysis","green")`
+
+**Summary **
+```{r}
+summary(Data_eng)
+```
+
+**Training and testing** \
+*We may yse 80-20 % of the data for training and testing (validation)*
+```{r}
+train.data<-head(supply,48)# 80% of observations
+test.data<-tail(supply,12)# 20% of observations
+```
+
+ SARIMA model
+```{r}
+sarima.model<-auto.arima(train.data)
+sarima.model
+sarima.pred<-forecast(sarima.model)
+plot(sarima.pred)
+sarima.acc<-accuracy(sarima.pred)
+sarima.acc
+sarima.accTotal<-accuracy(sarima.pred,test.data)
+sarima.accTotal
+```
+
+SARIMA with regressor
+```{r}
+sarima.model_x1<-auto.arima(train.data,xreg =head(Data_eng$price_prod_1,48))
+sarima.model_x1
+sarima.pred_x1<-forecast(sarima.model_x1,xreg =tail(Data_eng$price_prod_1,12) )
+plot(sarima.pred_x1)
+sarima.acc_1<-accuracy(sarima.pred_x1)
+sarima.acc_1
+sarima.accTotal_1<-accuracy(sarima.pred_x1,tail(Data_eng$price_prod_1,12))
+sarima.accTotal_1
+```
+
+```{r}
+xreg_train <- as.matrix(Data_eng[1:48,c("price_prod_1","price_prod_2")])
+xreg_test <- as.matrix(Data_eng[49:60,c("price_prod_1","price_prod_2")])
+sarima.model_x2<-auto.arima(train.data,xreg=xreg_train)
+sarima.model_x2
+sarima.pred_x2<-forecast(sarima.model_x2,xreg=xreg_test,12)
+plot(sarima.pred_x2)
+lines(test.data,col="red")
+sarima.acc_2<-accuracy(sarima.pred_x2)
+sarima.acc_2
+
+```
+
+
+
+**Modelling with H2O**
+
+*We check the importance of the variables *
+```{r}
+h2o.init(max_mem_size = "16G")# intialize the H2O package
+```
+
+```{r}
+h2o.no_progress()
+```
+
+*Scale the data for training and testing*
+```{r}
+Data_eng <-as.tibble(Data_eng)
+training<-head(Data_eng,48)
+testing<-tail(Data_eng,12)
+training %>% select(no_of_consumer) %>%scale(center=TRUE)
+training %>% select(supply) %>% scale(center=TRUE) 
+training %>% select(demand) %>% scale(center=TRUE)
+training %>% select(price_prod_1) %>% scale(center=TRUE)
+training %>% select(price_prod_2) %>% scale(center=TRUE)
+training %>% select(exchange_rate) %>% scale(center=TRUE)
+testing %>% select(no_of_consumer) %>% scale(center=TRUE)
+testing %>% select(supply) %>% scale(center=TRUE)
+testing %>% select(demand) %>% scale(center=TRUE)
+testing %>% select(price_prod_1) %>% scale(center=TRUE)
+testing %>% select(price_prod_2) %>% scale(center=TRUE)
+testing %>% select(exchange_rate) %>% scale(center=TRUE)
+```
+
+```{r}
+y <- "demand"
+x <- setdiff(names(training %>% as.h2o()),c(y,"Time"))
+```
+
+*Random forest*
+```{r}
+rft_model <- 
+  h2o.randomForest(
+    x = x, 
+    y = y, 
+    training_frame = training %>% as.h2o(),
+    nfolds = 10,
+    ntrees = 500,
+    stopping_metric = "RMSE",
+    stopping_rounds = 10,
+    stopping_tolerance = 0.005,
+    seed = 1975
+  )
+```
+*Gradient Boosting machine*
+```{r}
+gbm_model <-  
+  h2o.gbm(
+    x = x, 
+    y = y, 
+    training_frame = as.h2o(training),
+    nfolds = 10,
+    ntrees = 500,
+    stopping_metric = "RMSE",
+    stopping_rounds = 10,         
+    stopping_tolerance = 0.005,
+    seed = 1975
+  )
+```
+
+*Generalized Linear Model (GLM)*
+```{r}
+glm_model <- 
+  h2o.glm(
+    x = x, 
+    y = y, 
+    training_frame = as.h2o(training),
+    nfolds = 10,
+    family = "gaussian",
+    seed = 1975
+  )
+```
+
+*Visualize results*
+```{r}
+p_glm <- vip(glm_model) + ggtitle("GLM model")
+p_rft <- vip(rft_model) + ggtitle("RF model")
+p_gbm <- vip(gbm_model) + ggtitle("GBM model")
+grid.arrange(p_glm, p_rft, p_gbm, nrow = 2)
+```
+
+
+### `r colorize("Accuracy","orange")`
+`r colorize("Errors","red")`
+
+**Performance evaluation**
+
+Check performance calculating R-squared and RMSE
+*Performance for Gradient Boosting*
+```{r}
+perf_gbm_model <- h2o.performance(gbm_model, newdata = as.h2o(testing))
+perf_gbm_model %>% h2o.r2()
+perf_gbm_model %>% h2o.rmse()
+```
+*Performance of GLM*
+```{r}
+perf_glm_model <- h2o.performance(glm_model, newdata = as.h2o(testing))
+perf_glm_model %>% h2o.r2()
+perf_glm_model %>% h2o.rmse()
+```
+*Performance of Random Forest*
+
+```{r}
+perf_rft_model <- h2o.performance(rft_model, newdata = as.h2o(testing))
+perf_rft_model %>% h2o.r2()
+perf_rft_model %>% h2o.rmse()
+```
+
+Adding a Month variable to our dataset:
+```{r}
+library(lubridate)
+Time<-as.Date(Data_eng$date, format = "%Y-%m")
+class(Time)   
+Month <- as.numeric(format(Time, "%m"))  # create a month variable
+Month_name<-month.name[Month]
+
+# Mutate this new variable to our dataset
+
+Data_eng<-Data_eng %>% mutate(month.name=Month_name)
+head(Data_eng)
+
+
+```
+
+Create some ideas
+```{r}
+# graph 1
+ggplot(Data_eng) +
+  aes(x = supply, y = price_prod_1, colour = month.name) +
+  geom_point(shape = "circle", size = 1.5) +
+  scale_color_hue(direction = 1) +
+  theme_minimal()
+
+# graph 2
+ggplot(Data_eng) +
+  aes(x = supply, y = price_prod_1) +
+  geom_point(
+    shape = "circle",
+    size = 2.15,
+    colour = "#112446"
+  ) +
+  theme_minimal() +
+  facet_wrap(vars(month.name))
+```
+
+
+*Neural Network with regressor*
+
+*we will use : price.prod1 and price.prod2 as external variables explaining supply of our main product*
+
+Training and testing
+```{r}
+
+train_1<-head(Data_eng,48)
+test_1<-tail(Data_eng,12)
+```
+
+Neural network
+```{r}
+nn.f2 = nnetar(ts(train_1$supply,start=2016,frequency = 12), xreg =
+ts(train_1$price_prod_1,start=2016,frequency = 12))
+nnetforecast <- forecast(nn.f2, xreg = ts(test_1$price_prod_1,start=c(2020,1),frequency=12), PI = T)
+autoplot(nnetforecast)+ylab("Supply")+
+autolayer(ts(test_1$supply,start=c(2020,1),frequency = 12),series="Data")
+summary(nnetforecast)
+```
+
+```{r}
+nn.f2 = nnetar(ts(train_1$supply,start=2016,frequency = 12), xreg = ts(train_1$exchange_rate,start=2016,frequency = 12))
+nnetforecast <- forecast(nn.f2, xreg = ts(test_1$exchange_rate,start=c(2020,1),frequency=12), PI = T)
+autoplot(nnetforecast)+ylab("Supply")+
+autolayer(ts(test_1$supply,start=c(2020,1),frequency = 12),series="Data")
+summary(nnetforecast)
+```
+
+Use two explanatory variables in NNAR
+
+```{r}
+xreg_train <- as.matrix(Data_eng[1:48,c("price_prod_1","price_prod_2")])
+xreg_test <- as.matrix(Data_eng[49:60,c("price_prod_1","price_prod_2")])
+
+nn.f3 = nnetar(ts(train_1$supply,start=2016,frequency = 12), xreg =xreg_train)
+nnetforecast <- forecast(nn.f3, xreg =xreg_test, PI = T)
+autoplot(nnetforecast)+ylab("Supply")+
+autolayer(ts(test_1$supply,start=c(2020,1),frequency = 12),series="Data")
+summary(nnetforecast)
+```
+
+Some extra tips if we have goruping variables:
+
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(timetk)
+# Setup for the plotly charts (# FALSE returns ggplots)
+interactive <- FALSE
+
+
+```
+
+# Plotting Groups
+
+Next, let's move on to our dataset supposing we have different qualities of our producti. Wewill add to this dataset a Quality variable (in this ocassion we are just sampling). 
+
+```{r}
+Quality=sample(c("Q1","Q2","Q3"),60,replace = TRUE)
+
+Data_eng<-Data_eng %>% mutate(Quality=as.factor(Quality))
+Data_eng
+
+Data_eng %>% group_by(Quality)
+
+```
+
+```{r}
+Data_eng %>%
+  group_by(Quality) %>%
+  plot_time_series(date, supply, 
+                   .facet_ncol = 2, .facet_scales = "free",
+                   .interactive = interactive)
+```
+
+
+
+
+
+### `r colorize("Conclussions","purple")`
+`r colorize("Conclussions","red")`
+
+*Analyse and put some explanations here why your final model is the "best" model.* \
+
+
+
+### `r colorize("References","red")`
+`r colorize("Reference","red")`
+
+
+
